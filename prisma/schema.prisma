@@ -77,9 +77,11 @@ model Booking {
   startAt   DateTime
   endAt     DateTime
   status    BookingStatus @default(CONFIRMED)
-  price     Float? // hourly rate at booking time
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  price     Float? // hourly rate 
+
+  review    Review?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tutorId])
   @@index([studentId])
@@ -91,6 +93,8 @@ model Review {
   authorId  String
   tutor     TutorProfile @relation(fields: [tutorId], references: [id])
   tutorId   String
+  booking   Booking      @relation(fields: [bookingId], references: [id])
+  bookingId String       @unique
   rating    Float
   comment   String?
   createdAt DateTime     @default(now())
