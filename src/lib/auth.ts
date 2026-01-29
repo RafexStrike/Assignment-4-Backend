@@ -18,8 +18,23 @@ import { userRole } from "../types/user.type";
 export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
-    autoSignIn: false,
+    autoSignIn: true,
     requireEmailVerification: false,
+  },
+  // for forcing the emailVerified column on the database to be true
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          return {
+            data: {
+              ...user,
+              emailVerified: true, // Force it to true during creation
+            },
+          };
+        },
+      },
+    },
   },
   socialProviders: {
     google: {

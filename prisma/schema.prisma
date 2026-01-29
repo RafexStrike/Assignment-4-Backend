@@ -101,6 +101,7 @@ model Review {
 
   @@index([tutorId])
   @@index([authorId])
+  @@index([bookingId])
 }
 
 model AvailabilitySlot {
