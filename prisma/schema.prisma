@@ -32,7 +32,7 @@ model User {
   tutorProfile  TutorProfile?
   bookings      Booking[]     @relation("StudentBookings")
   reviews       Review[]      @relation("UserReviews")
-  emailVerified Boolean       @default(false)
+  emailVerified Boolean       @default(true)
   image         String?
   sessions      Session[]
   accounts      Account[]
