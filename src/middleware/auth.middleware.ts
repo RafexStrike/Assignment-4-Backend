@@ -1,3 +1,4 @@
+//src/ middleware/auth.middleware.ts
 import { NextFunction, Request, Response } from "express";
 import { auth as authVariableDefinedInAuthDotTsFile } from "../lib/auth";
 

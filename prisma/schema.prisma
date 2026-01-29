@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -24,14 +23,15 @@ enum BookingStatus {
 model User {
   id            String        @id @default(uuid())
   email         String        @unique
-  // password      String
   name          String?
   role          Role          @default(STUDENT)
+  isBanned      Boolean       @default(false) // admin ban/unban
+  banReason     String? // reason for ban
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   tutorProfile  TutorProfile?
-  bookings      Booking[]     @relation("UserBookings")
-  reviews       Review[]
+  bookings      Booking[]     @relation("StudentBookings")
+  reviews       Review[]      @relation("UserReviews")
   emailVerified Boolean       @default(false)
   image         String?
   sessions      Session[]
@@ -45,53 +45,70 @@ model TutorProfile {
   user         User               @relation(fields: [userId], references: [id])
   userId       String             @unique
   bio          String?
+  education    String?
   hourlyRate   Float?
   rating       Float?             @default(0)
-  categories   Category[]
+  totalReviews Int                @default(0)
+  isFeatured   Boolean            @default(false)
+  categories   Category[] // Categories = Subjects they teach
   availability AvailabilitySlot[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
   reviews      Review[]
-  bookings     Booking[]
+  bookings     Booking[]          @relation("TutorBookings")
 }
 
 model Category {
-  id     String         @id @default(uuid())
-  name   String         @unique
-  tutors TutorProfile[]
+  id          String         @id @default(uuid())
+  name        String         @unique
+  description String?
+  tutors      TutorProfile[]
 }
 
 model Booking {
   id        String        @id @default(uuid())
-  student   User          @relation("UserBookings", fields: [studentId], references: [id])
+  student   User          @relation("StudentBookings", fields: [studentId], references: [id])
   studentId String
-  tutor     TutorProfile  @relation(fields: [tutorId], references: [id])
+  tutor     TutorProfile  @relation("TutorBookings", fields: [tutorId], references: [id])
   tutorId   String
+  subject   String? //  which subject was booked 
+  notes     String? // student requirements/notes
   startAt   DateTime
   endAt     DateTime
   status    BookingStatus @default(CONFIRMED)
+  price     Float? // hourly rate at booking time
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+
+  @@index([tutorId])
+  @@index([studentId])
 }
 
 model Review {
   id        String       @id @default(uuid())
-  author    User         @relation(fields: [authorId], references: [id])
+  author    User         @relation("UserReviews", fields: [authorId], references: [id])
   authorId  String
   tutor     TutorProfile @relation(fields: [tutorId], references: [id])
   tutorId   String
-  rating    Int
+  rating    Float
   comment   String?
   createdAt DateTime     @default(now())
+
+  @@index([tutorId])
+  @@index([authorId])
 }
 
 model AvailabilitySlot {
   id        String       @id @default(uuid())
-  tutor     TutorProfile @relation(fields: [tutorId], references: [id])
+  tutor     TutorProfile @relation(fields: [tutorId], references: [id], onDelete: Cascade)
   tutorId   String
-  startAt   DateTime
-  endAt     DateTime
+  dayOfWeek Int //  0=Sunday, 6=Saturday
+  startTime String // "HH:mm" format (e.g., "09:00")
+  endTime   String //  "HH:mm" format (e.g., "17:00")
   createdAt DateTime     @default(now())
+
+  @@unique([tutorId, dayOfWeek, startTime, endTime])
+  @@index([tutorId])
 }
 
 model Session {
