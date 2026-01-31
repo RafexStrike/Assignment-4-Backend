@@ -21,6 +21,12 @@ export const auth = betterAuth({
     autoSignIn: true,
     requireEmailVerification: false,
   },
+  cookies: {
+    session: {
+      sameSite: "none",
+      secure: true,
+    },
+  },
   // for forcing the emailVerified column on the database to be true
   databaseHooks: {
     user: {
