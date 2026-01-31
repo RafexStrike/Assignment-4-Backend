@@ -14,7 +14,20 @@ router.get("/", ReviewController.listForTutor);
 router.use(auth());
 
 // Student only
-router.post("/", auth(userRole.STUDENT), ReviewController.create);
-router.get("/my-reviews", auth(userRole.STUDENT), ReviewController.listMyReviews);
+router.post("/", auth(userRole.STUDENT), (req, res, next) => {
+  console.log("[REVIEW] POST / - Creating new review");
+  console.log("[REVIEW] Student ID:", req.user?.id);
+  console.log("[REVIEW] Request body:", req.body);
+  console.log("[REVIEW] Timestamp:", new Date().toISOString());
+  next();
+}, ReviewController.create);
+
+router.get("/my-reviews", auth(userRole.STUDENT), (req, res, next) => {
+  console.log("[REVIEW] GET /my-reviews - Getting my reviews");
+  console.log("[REVIEW] Student ID:", req.user?.id);
+  console.log("[REVIEW] Query params:", req.query);
+  console.log("[REVIEW] Timestamp:", new Date().toISOString());
+  next();
+}, ReviewController.listMyReviews);
 
 export const ReviewRoutes = router;
