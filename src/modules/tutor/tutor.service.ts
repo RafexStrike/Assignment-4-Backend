@@ -250,8 +250,11 @@ export const TutorService = {
       where: { userId },
     });
 
+    // if (!profile) {
+    //   throw new Error("Tutor profile not found");
+    // }
     if (!profile) {
-      throw new Error("Tutor profile not found");
+      return [];
     }
 
     return await prisma.availabilitySlot.findMany({
