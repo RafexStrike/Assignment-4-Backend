@@ -1,13 +1,13 @@
 // src/modules/booking/booking.service.ts
+
 import { prisma } from "../../lib/prisma.js";
-// import { BookingStatus } from "../../../generated/prisma/client";
 import { BookingStatus } from "../../generated/prisma/enums.js";
 
 export interface CreateBookingInput {
   tutorId: string;
   subject: string;
-  startAt: string; // ISO date string
-  endAt: string; // ISO date string
+  startAt: string; // ISO-like string sent from frontend
+  endAt: string;   // ISO-like string sent from frontend
   notes?: string;
 }
 
@@ -22,26 +22,29 @@ export const BookingService = {
     if (!tutor) throw new Error("Tutor not found");
     if (tutor.userId === studentId) throw new Error("Cannot book yourself");
 
-    // 2. Validate dates
-    const startAt = new Date(data.startAt);
-    const endAt = new Date(data.endAt);
+    // ============================================================
+    //  CRITICAL FIX: TREAT TIMES AS LOCAL (NO UTC SHIFT)
+    // ============================================================
+    const startAt = new Date(data.startAt.replace("Z", ""));
+    const endAt = new Date(data.endAt.replace("Z", ""));
     const now = new Date();
 
     if (startAt < now) throw new Error("Cannot book sessions in the past");
     if (endAt <= startAt) throw new Error("End time must be after start time");
 
-    // Max duration 3 hours
+    // 2. Duration validation
     const durationHours =
       (endAt.getTime() - startAt.getTime()) / (1000 * 60 * 60);
+
     if (durationHours > 3) throw new Error("Session cannot exceed 3 hours");
     if (durationHours < 0.5)
       throw new Error("Session must be at least 30 minutes");
 
-    // 3. Check for double booking (tutor already booked)
+    // 3. Check for overlapping bookings
     const existingBooking = await prisma.booking.findFirst({
       where: {
         tutorId: data.tutorId,
-        status: { not: "CANCELLED" },
+        status: { not: BookingStatus.CANCELLED },
         OR: [
           {
             startAt: { lte: startAt },
@@ -55,12 +58,15 @@ export const BookingService = {
       },
     });
 
-    if (existingBooking) throw new Error("Tutor is not available at this time");
+    if (existingBooking) {
+      throw new Error("Tutor is not available at this time");
+    }
 
-    // 4. Check tutor's recurring availability (optional but recommended)
-    const dayOfWeek = startAt.getDay(); // 0-6
-    // const timeStr = startAt.toISOString().slice(11, 16);
-    // const endTimeStr = endAt.toISOString().slice(11, 16);
+    // ============================================================
+    // LOCAL DAY + LOCAL TIME (MATCHES AVAILABILITY SLOTS)
+    // ============================================================
+    const dayOfWeek = startAt.getDay(); // 0–6 (LOCAL day)
+
     const timeStr = startAt.toLocaleTimeString("en-GB", {
       hour: "2-digit",
       minute: "2-digit",
@@ -73,10 +79,19 @@ export const BookingService = {
       hour12: false,
     });
 
+    // Debug (keep until confirmed working)
+    console.log("[BOOKING][TIME CHECK]", {
+      startAt,
+      endAt,
+      dayOfWeek,
+      timeStr,
+      endTimeStr,
+    });
+
     const availabilitySlot = await prisma.availabilitySlot.findFirst({
       where: {
         tutorId: data.tutorId,
-        dayOfWeek: dayOfWeek,
+        dayOfWeek,
         startTime: { lte: timeStr },
         endTime: { gte: endTimeStr },
       },
@@ -86,9 +101,10 @@ export const BookingService = {
       throw new Error("Tutor is not available at this time slot");
     }
 
-    // 5. Calculate price
-    const hours = durationHours;
-    const price = tutor.hourlyRate ? tutor.hourlyRate * hours : 0;
+    // 5. Price calculation
+    const price = tutor.hourlyRate
+      ? tutor.hourlyRate * durationHours
+      : 0;
 
     // 6. Create booking
     return await prisma.booking.create({
@@ -96,18 +112,22 @@ export const BookingService = {
         studentId,
         tutorId: data.tutorId,
         subject: data.subject,
-        // notes: data.notes,
         notes: data.notes ?? null,
         startAt,
         endAt,
         price,
-        status: "CONFIRMED",
+        status: BookingStatus.CONFIRMED,
       },
       include: {
         tutor: {
           include: {
             user: {
-              select: { id: true, name: true, email: true, image: true },
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                image: true,
+              },
             },
           },
         },
@@ -115,10 +135,12 @@ export const BookingService = {
     });
   },
 
+  // ============================================================
+
   async getMyBookings(
     userId: string,
     userRole: "STUDENT" | "TUTOR",
-    status?: string,
+    status?: string
   ) {
     const where: any = {};
 
@@ -136,7 +158,7 @@ export const BookingService = {
       where.status = status;
     }
 
-    return await prisma.booking.findMany({
+    return prisma.booking.findMany({
       where,
       orderBy: { startAt: "desc" },
       include: {
@@ -148,7 +170,7 @@ export const BookingService = {
         student: {
           select: { id: true, name: true, email: true, image: true },
         },
-        review: { select: { id: true, rating: true } }, // To check if reviewed
+        review: { select: { id: true, rating: true } },
       },
     });
   },
@@ -156,16 +178,14 @@ export const BookingService = {
   async getBookingById(
     userId: string,
     bookingId: string,
-    userRole: "STUDENT" | "TUTOR",
+    userRole: "STUDENT" | "TUTOR"
   ) {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       include: {
         tutor: {
           include: {
-            user: {
-              select: { id: true, name: true, email: true, image: true },
-            },
+            user: { select: { id: true, name: true, email: true, image: true } },
           },
         },
         student: {
@@ -177,10 +197,10 @@ export const BookingService = {
 
     if (!booking) throw new Error("Booking not found");
 
-    // Authorization check
     if (userRole === "STUDENT" && booking.studentId !== userId) {
       throw new Error("Unauthorized");
     }
+
     if (userRole === "TUTOR") {
       const profile = await prisma.tutorProfile.findUnique({
         where: { userId },
@@ -196,35 +216,26 @@ export const BookingService = {
   async cancelBooking(
     userId: string,
     bookingId: string,
-    userRole: "STUDENT" | "TUTOR",
+    userRole: "STUDENT" | "TUTOR"
   ) {
-    const booking = await this.getBookingById(userId, bookingId, userRole);
+    const booking = await this.getBookingById(
+      userId,
+      bookingId,
+      userRole
+    );
 
-    if (booking.status === "CANCELLED")
+    if (booking.status === BookingStatus.CANCELLED)
       throw new Error("Booking already cancelled");
-    if (booking.status === "COMPLETED")
+
+    if (booking.status === BookingStatus.COMPLETED)
       throw new Error("Cannot cancel completed booking");
 
-    // Students can only cancel confirmed bookings
-    if (userRole === "STUDENT" && booking.status !== "CONFIRMED") {
-      throw new Error("Cannot cancel this booking");
-    }
-
-    return await prisma.booking.update({
+    return prisma.booking.update({
       where: { id: bookingId },
-      data: { status: "CANCELLED" },
-      include: {
-        tutor: {
-          include: {
-            user: { select: { id: true, name: true, email: true } },
-          },
-        },
-        student: { select: { id: true, name: true, email: true } },
-      },
+      data: { status: BookingStatus.CANCELLED },
     });
   },
 
-  // For tutor to mark as completed
   async completeBooking(tutorUserId: string, bookingId: string) {
     const profile = await prisma.tutorProfile.findUnique({
       where: { userId: tutorUserId },
@@ -237,17 +248,16 @@ export const BookingService = {
     });
 
     if (!booking) throw new Error("Booking not found");
-    if (booking.status !== "CONFIRMED")
+    if (booking.status !== BookingStatus.CONFIRMED)
       throw new Error("Can only complete confirmed bookings");
 
-    // Ensure session time has passed
     if (new Date() < booking.endAt) {
       throw new Error("Cannot complete booking before end time");
     }
 
-    return await prisma.booking.update({
+    return prisma.booking.update({
       where: { id: bookingId },
-      data: { status: "COMPLETED" },
+      data: { status: BookingStatus.COMPLETED },
     });
   },
 };
